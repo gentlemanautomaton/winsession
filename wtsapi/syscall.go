@@ -18,6 +18,7 @@ var (
 	procWTSFreeMemory              = modwtsapi32.NewProc("WTSFreeMemory")
 	procWTSEnumerateSessions       = modwtsapi32.NewProc("WTSEnumerateSessionsW")
 	procWTSQuerySessionInformation = modwtsapi32.NewProc("WTSQuerySessionInformationW")
+	procWTSQueryUserToken          = modwtsapi32.NewProc("WTSQueryUserToken")
 )
 
 // OpenServer opens a connection to the windows terminal server with the given
@@ -122,7 +123,8 @@ func EnumerateSessions(server syscall.Handle) (sessions []SessionInfo, err error
 	return sessions, nil
 }
 
-// QueryUserName returns the name of the uswer for the given server and session ID.
+// QueryUserName returns the name of the uswer for the given server and
+// session ID.
 func QueryUserName(server syscall.Handle, sessionID uint32) (userName string, err error) {
 	var buf [512]byte
 	data, err := QuerySessionInformation(server, sessionID, infoclass.UserName, buf[:])
@@ -132,7 +134,8 @@ func QueryUserName(server syscall.Handle, sessionID uint32) (userName string, er
 	return utf16BytesToString(data), nil
 }
 
-// QueryUserDomain returns the domain of the user for the given server and session ID.
+// QueryUserDomain returns the domain of the user for the given server and
+// session ID.
 func QueryUserDomain(server syscall.Handle, sessionID uint32) (userName string, err error) {
 	var buf [512]byte
 	data, err := QuerySessionInformation(server, sessionID, infoclass.DomainName, buf[:])
@@ -186,6 +189,30 @@ func QuerySessionInformation(server syscall.Handle, sessionID, infoClass uint32,
 	copy(data, raw)
 
 	return data, nil
+}
+
+// QueryUserToken returns the primary access token of the user currently
+// logged on to the given local session ID. It calls the WTSQueryUserToken
+// windows API function.
+//
+// This function is highly restricted and will only succeed for applications
+// running as LocalSystem.
+//
+// It is the caller's responsibility to close the token handle when finished
+// with it by calling syscall.CloseHandle().
+//
+// https://docs.microsoft.com/en-us/windows/win32/api/wtsapi32/nf-wtsapi32-wtsqueryusertoken
+func QueryUserToken(sessionID uint32) (token syscall.Handle, err error) {
+	r0, _, e := syscall.Syscall(
+		procWTSQueryUserToken.Addr(),
+		2,
+		uintptr(sessionID),
+		uintptr(unsafe.Pointer(&token)),
+		0)
+	if r0 == 0 {
+		err = syscall.Errno(e)
+	}
+	return
 }
 
 // freeMemory releases memory allocated by previous WTS function calls.
