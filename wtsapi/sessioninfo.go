@@ -1,3 +1,5 @@
+// +build windows
+
 package wtsapi
 
 import "github.com/gentlemanautomaton/winsession/sessionstate"
