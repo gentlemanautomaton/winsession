@@ -1,7 +1,7 @@
 package infoclass
 
 // Windows session information classes. Used by
-// wtsapi.querySessionInformation.
+// wtsapi.QuerySessionInformation.
 //
 // https://docs.microsoft.com/en-us/windows/win32/api/wtsapi32/ne-wtsapi32-wts_info_class
 const (
