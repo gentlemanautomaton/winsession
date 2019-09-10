@@ -3,6 +3,7 @@
 package wtsapi
 
 import (
+	"syscall"
 	"unicode/utf16"
 	"unsafe"
 )
@@ -21,4 +22,9 @@ func utf16PointerToString(ptr *uint16) string {
 	}
 
 	return string(utf16.Decode(s))
+}
+
+func utf16BytesToString(s []byte) string {
+	p := (*[0xffff]uint16)(unsafe.Pointer(&s[0]))
+	return syscall.UTF16ToString(p[:len(s)/2])
 }

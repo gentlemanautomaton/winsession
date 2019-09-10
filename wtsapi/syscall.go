@@ -6,16 +6,18 @@ import (
 	"syscall"
 	"unsafe"
 
+	"github.com/gentlemanautomaton/winsession/infoclass"
 	"golang.org/x/sys/windows"
 )
 
 var (
 	modwtsapi32 = windows.NewLazySystemDLL("wtsapi32.dll")
 
-	procWTSOpenServerEx      = modwtsapi32.NewProc("WTSOpenServerExW")
-	procWTSCloseServer       = modwtsapi32.NewProc("WTSCloseServer")
-	procWTSFreeMemory        = modwtsapi32.NewProc("WTSFreeMemory")
-	procWTSEnumerateSessions = modwtsapi32.NewProc("WTSEnumerateSessionsW")
+	procWTSOpenServerEx            = modwtsapi32.NewProc("WTSOpenServerExW")
+	procWTSCloseServer             = modwtsapi32.NewProc("WTSCloseServer")
+	procWTSFreeMemory              = modwtsapi32.NewProc("WTSFreeMemory")
+	procWTSEnumerateSessions       = modwtsapi32.NewProc("WTSEnumerateSessionsW")
+	procWTSQuerySessionInformation = modwtsapi32.NewProc("WTSQuerySessionInformationW")
 )
 
 // OpenServer opens a connection to the windows terminal server with the given
@@ -87,7 +89,7 @@ func CloseServer(server syscall.Handle) (err error) {
 //
 //https://docs.microsoft.com/en-us/windows/win32/api/wtsapi32/nf-wtsapi32-wtsenumeratesessionsw
 func EnumerateSessions(server syscall.Handle) (sessions []SessionInfo, err error) {
-	var data unsafe.Pointer
+	var ptr unsafe.Pointer
 	var count uint32
 
 	r0, _, e := syscall.Syscall6(
@@ -96,17 +98,17 @@ func EnumerateSessions(server syscall.Handle) (sessions []SessionInfo, err error
 		uintptr(server),
 		0,
 		1,
-		uintptr(unsafe.Pointer(&data)),
+		uintptr(unsafe.Pointer(&ptr)),
 		uintptr(unsafe.Pointer(&count)),
 		0)
 	if r0 == 0 {
 		return nil, syscall.Errno(e)
 	}
-	defer freeMemory(data)
+	defer freeMemory(ptr)
 
-	// Cast the data pointer to an unbounded array and then take a slice of
+	// Cast the pointer to an unbounded array and then take a slice of
 	// suitable size from it
-	list := ((*[1 << 30]rawSessionInfo)(data))[0:count:count]
+	list := ((*[1 << 30]rawSessionInfo)(ptr))[0:count:count]
 
 	sessions = make([]SessionInfo, 0, count)
 	for _, s := range list {
@@ -118,6 +120,72 @@ func EnumerateSessions(server syscall.Handle) (sessions []SessionInfo, err error
 	}
 
 	return sessions, nil
+}
+
+// QueryUserName returns the name of the uswer for the given server and session ID.
+func QueryUserName(server syscall.Handle, sessionID uint32) (userName string, err error) {
+	var buf [512]byte
+	data, err := QuerySessionInformation(server, sessionID, infoclass.UserName, buf[:])
+	if err != nil {
+		return "", err
+	}
+	return utf16BytesToString(data), nil
+}
+
+// QueryUserDomain returns the domain of the user for the given server and session ID.
+func QueryUserDomain(server syscall.Handle, sessionID uint32) (userName string, err error) {
+	var buf [512]byte
+	data, err := QuerySessionInformation(server, sessionID, infoclass.DomainName, buf[:])
+	if err != nil {
+		return "", err
+	}
+	return utf16BytesToString(data), nil
+}
+
+// QuerySessionInformation returns raw session information for the requested
+// server, session and information class. It calls the WTSQuerySessionInformationW
+// windows API function.
+//
+// This is a low-level function that returns data as a slice of bytes. The data
+// returned will be a slice of buffer if buffer is of sufficient size.
+//
+// To efficiently query the local terminal server, specify Local when calling
+// this function.
+//
+// https://docs.microsoft.com/en-us/windows/win32/api/wtsapi32/nf-wtsapi32-wtsquerysessioninformationw
+func QuerySessionInformation(server syscall.Handle, sessionID, infoClass uint32, buffer []byte) (data []byte, err error) {
+	var ptr unsafe.Pointer
+	var size uint32
+
+	r0, _, e := syscall.Syscall6(
+		procWTSQuerySessionInformation.Addr(),
+		5,
+		uintptr(server),
+		uintptr(sessionID),
+		uintptr(infoClass),
+		uintptr(unsafe.Pointer(&ptr)),
+		uintptr(unsafe.Pointer(&size)),
+		0)
+	if r0 == 0 {
+		return nil, syscall.Errno(e)
+	}
+	defer freeMemory(ptr)
+
+	// Allocate data only if buffer is too small
+	if int(size) <= len(buffer) {
+		data = buffer[:size]
+	} else {
+		data = make([]byte, size)
+	}
+
+	// Cast the pointer to an unbounded array and then take a slice of
+	// suitable size from it
+	raw := ((*[1 << 30]byte)(ptr))[0:size:size]
+
+	// Copy the data to Go-backed memory
+	copy(data, raw)
+
+	return data, nil
 }
 
 // freeMemory releases memory allocated by previous WTS function calls.

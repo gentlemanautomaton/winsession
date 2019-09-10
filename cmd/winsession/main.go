@@ -28,25 +28,33 @@ func main() {
 }
 
 func list(target string) {
-	var srv syscall.Handle
+	var server syscall.Handle
 	if target == "" {
-		srv = wtsapi.Local
+		server = wtsapi.Local
 	} else {
 		var err error
-		srv, err = wtsapi.OpenServer(target)
+		server, err = wtsapi.OpenServer(target)
 		if err != nil {
 			fmt.Printf("Error: OpenServer: %v", err)
 			return
 		}
-		defer wtsapi.CloseServer(srv)
+		defer wtsapi.CloseServer(server)
 	}
 
-	sessions, err := wtsapi.EnumerateSessions(srv)
+	sessions, err := wtsapi.EnumerateSessions(server)
 	if err != nil {
 		fmt.Printf("Error: EnumerateSessions: %v\n", err)
 		return
 	}
 	for _, session := range sessions {
-		fmt.Printf("Session %d: %s: %s\n", session.ID, session.StationName, session.State)
+		line := fmt.Sprintf("Session %d: %s: %s", session.ID, session.StationName, session.State)
+		if userName, _ := wtsapi.QueryUserName(server, session.ID); userName != "" {
+			if domainName, _ := wtsapi.QueryUserDomain(server, session.ID); domainName != "" {
+				line = fmt.Sprintf("%s (%s\\%s)", line, domainName, userName)
+			} else {
+				line = fmt.Sprintf("%s (%s)", line, userName)
+			}
+		}
+		fmt.Println(line)
 	}
 }
