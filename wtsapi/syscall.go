@@ -3,6 +3,7 @@
 package wtsapi
 
 import (
+	"fmt"
 	"syscall"
 	"unsafe"
 
@@ -89,7 +90,7 @@ func CloseServer(server syscall.Handle) (err error) {
 // this function.
 //
 //https://docs.microsoft.com/en-us/windows/win32/api/wtsapi32/nf-wtsapi32-wtsenumeratesessionsw
-func EnumerateSessions(server syscall.Handle) (sessions []SessionInfo, err error) {
+func EnumerateSessions(server syscall.Handle) (sessions []SessionEntry, err error) {
 	var ptr unsafe.Pointer
 	var count uint32
 
@@ -109,14 +110,14 @@ func EnumerateSessions(server syscall.Handle) (sessions []SessionInfo, err error
 
 	// Cast the pointer to an unbounded array and then take a slice of
 	// suitable size from it
-	list := ((*[1 << 30]rawSessionInfo)(ptr))[0:count:count]
+	list := ((*[1 << 30]sessionEntry)(ptr))[0:count:count]
 
-	sessions = make([]SessionInfo, 0, count)
+	sessions = make([]SessionEntry, 0, count)
 	for _, s := range list {
-		sessions = append(sessions, SessionInfo{
-			ID:          s.ID,
-			StationName: utf16PointerToString(s.StationName),
-			State:       s.State,
+		sessions = append(sessions, SessionEntry{
+			SessionID:     s.SessionID,
+			WindowStation: utf16PointerToString(s.WindowStation),
+			State:         s.State,
 		})
 	}
 
@@ -127,7 +128,7 @@ func EnumerateSessions(server syscall.Handle) (sessions []SessionInfo, err error
 // session ID.
 func QueryUserName(server syscall.Handle, sessionID uint32) (userName string, err error) {
 	var buf [512]byte
-	data, err := QuerySessionInformation(server, sessionID, infoclass.UserName, buf[:])
+	data, err := QuerySessionData(server, sessionID, infoclass.UserName, buf[:])
 	if err != nil {
 		return "", err
 	}
@@ -138,25 +139,94 @@ func QueryUserName(server syscall.Handle, sessionID uint32) (userName string, er
 // session ID.
 func QueryUserDomain(server syscall.Handle, sessionID uint32) (userName string, err error) {
 	var buf [512]byte
-	data, err := QuerySessionInformation(server, sessionID, infoclass.DomainName, buf[:])
+	data, err := QuerySessionData(server, sessionID, infoclass.DomainName, buf[:])
 	if err != nil {
 		return "", err
 	}
 	return utf16BytesToString(data), nil
 }
 
-// QuerySessionInformation returns raw session information for the requested
-// server, session and information class. It calls the WTSQuerySessionInformationW
+// QueryClientInfo returns information about the client connected to the
+// requested session.
+func QueryClientInfo(server syscall.Handle, sessionID uint32) (ClientInfo, error) {
+	var buf [clientInfoSize]byte
+	data, err := QuerySessionData(server, sessionID, infoclass.ClientInfo, buf[:])
+	if err != nil {
+		return ClientInfo{}, err
+	}
+
+	raw := (*clientInfo)(unsafe.Pointer(&data[0]))
+	return ClientInfo{
+		ComputerName:            syscall.UTF16ToString(raw.ComputerName[:]),
+		ComputerDomain:          syscall.UTF16ToString(raw.ComputerDomain[:]),
+		UserName:                syscall.UTF16ToString(raw.UserName[:]),
+		WorkDirectory:           syscall.UTF16ToString(raw.WorkDirectory[:]),
+		InitialProgram:          syscall.UTF16ToString(raw.InitialProgram[:]),
+		EncryptionLevel:         raw.EncryptionLevel,
+		ClientAddressFamily:     raw.ClientAddressFamily,
+		ClientAddress:           clientAddressToString(raw.ClientAddress[:], raw.ClientAddressFamily),
+		HRes:                    raw.HRes,
+		VRes:                    raw.VRes,
+		ColorDepth:              raw.ColorDepth,
+		ClientDirectory:         syscall.UTF16ToString(raw.ClientDirectory[:]),
+		ClientBuildNumber:       raw.ClientBuildNumber,
+		OutputBufferCountHost:   raw.OutputBufferCountHost,
+		OutputBufferCountClient: raw.OutputBufferCountClient,
+		OutputBufferLength:      raw.OutputBufferLength,
+		DeviceID:                syscall.UTF16ToString(raw.DeviceID[:]),
+	}, nil
+}
+
+// QuerySessionInfo returns detailed information for the requested session.
+func QuerySessionInfo(server syscall.Handle, sessionID uint32) (SessionInfo, error) {
+	var buf [sessionInfoLevel1Size]byte
+	data, err := QuerySessionData(server, sessionID, infoclass.SessionInfoEx, buf[:])
+	if err != nil {
+		return SessionInfo{}, err
+	}
+
+	header := (*sessionInfoHeader)(unsafe.Pointer(&data[0]))
+
+	switch header.Level {
+	default:
+		return SessionInfo{}, fmt.Errorf("unknown session info level: %d", header.Level)
+	case 1:
+		raw := (*sessionInfo)(unsafe.Pointer(&data[0]))
+		return SessionInfo{
+			SessionID:               raw.SessionID,
+			ConnState:               raw.ConnState,
+			LockState:               raw.LockState,
+			WindowStation:           syscall.UTF16ToString(raw.WindowStation[:]),
+			UserName:                syscall.UTF16ToString(raw.UserName[:]),
+			UserDomain:              syscall.UTF16ToString(raw.UserDomain[:]),
+			LogonTime:               timeFrom100NsecUTC(raw.LogonTime),
+			ConnectTime:             timeFrom100NsecUTC(raw.ConnectTime),
+			DisconnectTime:          timeFrom100NsecUTC(raw.DisconnectTime),
+			LastInputTime:           timeFrom100NsecUTC(raw.LastInputTime),
+			CurrentTime:             timeFrom100NsecUTC(raw.CurrentTime),
+			IncomingBytes:           raw.IncomingBytes,
+			OutgoingBytes:           raw.OutgoingBytes,
+			IncomingFrames:          raw.IncomingFrames,
+			OutgoingFrames:          raw.OutgoingFrames,
+			IncomingCompressedBytes: raw.IncomingCompressedBytes,
+			OutgoingCompressedBytes: raw.OutgoingCompressedBytes,
+		}, nil
+	}
+}
+
+// QuerySessionData returns raw session data for the requested server, session
+// and information class. It calls the WTSQuerySessionInformationW
 // windows API function.
 //
-// This is a low-level function that returns data as a slice of bytes. The data
-// returned will be a slice of buffer if buffer is of sufficient size.
+// This is a low-level function that returns data as a slice of bytes. If a
+// non-nil buffer of sufficient size is provided, the returned data will be
+// sliced from the buffer.
 //
 // To efficiently query the local terminal server, specify Local when calling
 // this function.
 //
 // https://docs.microsoft.com/en-us/windows/win32/api/wtsapi32/nf-wtsapi32-wtsquerysessioninformationw
-func QuerySessionInformation(server syscall.Handle, sessionID, infoClass uint32, buffer []byte) (data []byte, err error) {
+func QuerySessionData(server syscall.Handle, sessionID, infoClass uint32, buffer []byte) (data []byte, err error) {
 	var ptr unsafe.Pointer
 	var size uint32
 
