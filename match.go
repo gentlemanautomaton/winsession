@@ -2,7 +2,11 @@
 
 package winsession
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/gentlemanautomaton/winsession/connstate"
+)
 
 // A StringMatcher is a function that matches strings
 type StringMatcher func(string) bool
@@ -42,6 +46,18 @@ func MatchAll(filters ...Filter) Filter {
 func MatchID(id ID) Filter {
 	return func(session Session) bool {
 		return session.ID == id
+	}
+}
+
+// MatchState returns a filter that matches any of the given states.
+func MatchState(states ...connstate.Value) Filter {
+	return func(session Session) bool {
+		for _, state := range states {
+			if session.State == state {
+				return true
+			}
+		}
+		return false
 	}
 }
 
