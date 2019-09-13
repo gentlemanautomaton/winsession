@@ -272,7 +272,7 @@ func QuerySessionData(server syscall.Handle, sessionID, infoClass uint32, buffer
 // with it by calling syscall.CloseHandle().
 //
 // https://docs.microsoft.com/en-us/windows/win32/api/wtsapi32/nf-wtsapi32-wtsqueryusertoken
-func QueryUserToken(sessionID uint32) (token syscall.Handle, err error) {
+func QueryUserToken(sessionID uint32) (token syscall.Token, err error) {
 	r0, _, e := syscall.Syscall(
 		procWTSQueryUserToken.Addr(),
 		2,
