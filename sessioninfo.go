@@ -21,6 +21,18 @@ type SessionInfo struct {
 	CurrentTime    time.Time
 }
 
+// User returns the session's user in the form DOMAIN\USER.
+func (info SessionInfo) User() string {
+	switch {
+	case info.UserName == "":
+		return ""
+	case info.UserDomain == "":
+		return info.UserName
+	default:
+		return info.UserDomain + `\` + info.UserName
+	}
+}
+
 // IsZero returns true if the session info is unset.
 func (info SessionInfo) IsZero() bool {
 	return info == SessionInfo{}

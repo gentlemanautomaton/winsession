@@ -124,7 +124,7 @@ func EnumerateSessions(server syscall.Handle) (sessions []SessionEntry, err erro
 	return sessions, nil
 }
 
-// QueryUserName returns the name of the uswer for the given server and
+// QueryUserName returns the name of the user for the given server and
 // session ID.
 func QueryUserName(server syscall.Handle, sessionID uint32) (userName string, err error) {
 	var buf [512]byte

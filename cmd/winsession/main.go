@@ -52,8 +52,8 @@ func list(target string) {
 				line = fmt.Sprintf("%s: %s", line, info.WindowStation)
 			}
 			line = fmt.Sprintf("%s: %s (%s)", line, session.State, info.LockState)
-			if name := makeName(info.UserName, info.UserDomain); name != "" {
-				line = fmt.Sprintf("%s: %s", line, name)
+			if user := info.User(); user != "" {
+				line = fmt.Sprintf("%s: %s", line, user)
 			}
 			fmt.Println(line)
 
@@ -90,8 +90,7 @@ func list(target string) {
 
 		// RDP details
 		if client := session.Client; !client.IsZero() {
-			computer := makeName(client.ComputerName, client.ComputerDomain)
-			if computer != "" {
+			if computer := client.Computer(); computer != "" {
 				if addr := client.Address; addr != "" {
 					computer = fmt.Sprintf("%s <%s>", computer, addr)
 				}
@@ -127,15 +126,4 @@ func makeDuration(when, now time.Time) time.Duration {
 	d *= time.Second
 
 	return d
-}
-
-func makeName(user, domain string) string {
-	switch {
-	case user == "":
-		return ""
-	case domain == "":
-		return user
-	default:
-		return domain + `\` + user
-	}
 }

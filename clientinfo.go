@@ -21,6 +21,18 @@ type ClientInfo struct {
 	BuildNumber     uint32
 }
 
+// Computer returns the client computer in the form DOMAIN\NAME.
+func (info ClientInfo) Computer() string {
+	switch {
+	case info.ComputerName == "":
+		return ""
+	case info.ComputerDomain == "":
+		return info.ComputerName
+	default:
+		return info.ComputerDomain + `\` + info.ComputerName
+	}
+}
+
 // IsZero returns true if the client info is unset.
 func (info ClientInfo) IsZero() bool {
 	return info == ClientInfo{}
