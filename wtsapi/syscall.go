@@ -254,7 +254,7 @@ func QuerySessionData(server syscall.Handle, sessionID, infoClass uint32, buffer
 
 	// Cast the pointer to an unbounded array and then take a slice of
 	// suitable size from it
-	raw := ((*[1 << 30]byte)(ptr))[0:size:size]
+	raw := ((*[math.MaxInt]byte)(ptr))[0:size:size]
 
 	// Copy the data to Go-backed memory
 	copy(data, raw)
