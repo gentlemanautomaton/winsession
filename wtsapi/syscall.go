@@ -111,7 +111,7 @@ func EnumerateSessions(server syscall.Handle) (sessions []SessionEntry, err erro
 
 	// Cast the pointer to an unbounded array and then take a slice of
 	// suitable size from it
-	list := ((*[math.MaxInt]sessionEntry)(ptr))[0:count:count]
+	list := ((*[math.MaxInt/unsafe.Sizeof(sessionEntry{})]sessionEntry)(ptr))[0:count:count]
 
 	sessions = make([]SessionEntry, 0, count)
 	for _, s := range list {
