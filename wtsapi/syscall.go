@@ -111,7 +111,7 @@ func EnumerateSessions(server syscall.Handle) (sessions []SessionEntry, err erro
 
 	// Cast the pointer to an unbounded array and then take a slice of
 	// suitable size from it
-	list := ((*[1 << 24]sessionEntry)(ptr))[0:count:count]
+	list := unsafe.Slice((*sessionEntry)(ptr), count)
 
 	sessions = make([]SessionEntry, 0, count)
 	for _, s := range list {
@@ -254,7 +254,7 @@ func QuerySessionData(server syscall.Handle, sessionID, infoClass uint32, buffer
 
 	// Cast the pointer to an unbounded array and then take a slice of
 	// suitable size from it
-	raw := ((*[1 << 30]byte)(ptr))[0:size:size]
+	raw := unsafe.Slice((*byte)(ptr), size)
 
 	// Copy the data to Go-backed memory
 	copy(data, raw)
