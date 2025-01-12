@@ -1,3 +1,4 @@
+//go:build windows
 // +build windows
 
 package wtsapi
@@ -89,7 +90,7 @@ func CloseServer(server syscall.Handle) (err error) {
 // To efficiently query the local terminal server, specify Local when calling
 // this function.
 //
-//https://docs.microsoft.com/en-us/windows/win32/api/wtsapi32/nf-wtsapi32-wtsenumeratesessionsw
+// https://docs.microsoft.com/en-us/windows/win32/api/wtsapi32/nf-wtsapi32-wtsenumeratesessionsw
 func EnumerateSessions(server syscall.Handle) (sessions []SessionEntry, err error) {
 	var ptr unsafe.Pointer
 	var count uint32
@@ -110,7 +111,7 @@ func EnumerateSessions(server syscall.Handle) (sessions []SessionEntry, err erro
 
 	// Cast the pointer to an unbounded array and then take a slice of
 	// suitable size from it
-	list := ((*[1 << 30]sessionEntry)(ptr))[0:count:count]
+	list := ((*[1 << 24]sessionEntry)(ptr))[0:count:count]
 
 	sessions = make([]SessionEntry, 0, count)
 	for _, s := range list {
